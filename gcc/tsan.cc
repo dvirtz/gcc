@@ -47,6 +47,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "target.h"
 #include "diagnostic-core.h"
 
+#include <iterator>
+#include <algorithm>
+
 /* Number of instrumented memory accesses in the current function.  */
 
 /* Builds the following decl
@@ -95,6 +98,18 @@ is_vptr_store (gimple *stmt, tree expr, bool is_write)
 	return gimple_assign_rhs1 (stmt);
     }
   return NULL;
+}
+
+/* Create a new constant string literal of type CHAR_TYPE[strlen(str) + 1]
+   and return a tree node representing char* pointer to
+   it as an ADDR_EXPR (ARRAY_REF (CHAR_TYPE, ...)).  
+   The STRING_CST value is the strlen(str) bytes at str (the representation
+   of the string, which may be wide). */
+static tree build_string_literal_from(const char* str) {
+  if (str)
+    return build_string_literal(strlen(str) + 1, str);
+  
+  return build_string_literal_from("");
 }
 
 /* Instruments EXPR if needed. If any instrumentation is inserted,
@@ -208,14 +223,25 @@ instrument_expr (gimple_stmt_iterator gsi, tree expr, bool is_write)
 					    : BUILT_IN_TSAN_READ_RANGE);
       g = gimple_build_call (builtin_decl, 2, expr_ptr, size_int (size));
     }
-  else if (rhs == NULL)
-    g = gimple_build_call (get_memory_access_decl (is_write, size,
-						   TREE_THIS_VOLATILE (expr)),
-			   1, expr_ptr);
-  else
+  else 
     {
-      builtin_decl = builtin_decl_implicit (BUILT_IN_TSAN_VPTR_UPDATE);
-      g = gimple_build_call (builtin_decl, 2, expr_ptr, unshare_expr (rhs));
+      const auto xloc = expand_location (loc);
+      const auto line = build_int_cst (integer_type_node, xloc.line);
+      const auto file = build_string_literal_from (xloc.file);
+      const auto name = get_name(expr_ptr);
+      const auto object = build_string_literal_from (name);
+      if (rhs == NULL)
+      {
+        g = gimple_build_call (get_memory_access_decl (is_write, size,
+                TREE_THIS_VOLATILE (expr)),
+          4, expr_ptr, line, object, file);
+      }
+    else
+      {
+        builtin_decl = builtin_decl_implicit (BUILT_IN_TSAN_VPTR_UPDATE);
+        g = gimple_build_call (builtin_decl, 5, expr_ptr, unshare_expr (rhs), 
+          line, object, file);
+      }
     }
   gimple_set_location (g, loc);
   gimple_seq_add_stmt_without_update (&seq, g);
@@ -491,6 +517,12 @@ static void
 instrument_builtin_call (gimple_stmt_iterator *gsi)
 {
   gimple *stmt = gsi_stmt (*gsi), *g;
+  
+  warning_at (gimple_location (stmt), OPT_Wtsan,
+        "atomic builtins are not instrumented with %qs",
+        "-fsanitize=thread");
+  return;
+
   tree callee = gimple_call_fndecl (stmt), last_arg, args[6], t, lhs;
   enum built_in_function fcode = DECL_FUNCTION_CODE (callee);
   unsigned int i, num = gimple_call_num_args (stmt), j;
@@ -714,9 +746,10 @@ instrument_gimple (gimple_stmt_iterator *gsi)
   bool instrumented = false;
 
   stmt = gsi_stmt (*gsi);
-  if (is_gimple_call (stmt)
-      && (gimple_call_fndecl (stmt)
-	  != builtin_decl_implicit (BUILT_IN_TSAN_INIT)))
+  if (is_gimple_call (stmt) ) {
+    const auto callee = gimple_call_fndecl (stmt);
+
+    if (callee != builtin_decl_implicit (BUILT_IN_TSAN_INIT))
     {
       /* All functions with function call will have exit instrumented,
 	 therefore no function calls other than __tsan_func_exit
@@ -724,8 +757,47 @@ instrument_gimple (gimple_stmt_iterator *gsi)
       gimple_call_set_tail (as_a <gcall *> (stmt), false);
       if (gimple_call_builtin_p (stmt, BUILT_IN_NORMAL))
 	instrument_builtin_call (gsi);
+    
+      if (callee) {
+        const auto name_decl = DECL_NAME (callee);
+        const auto name = IDENTIFIER_POINTER (name_decl);
+        using name_func = std::pair<const char*, built_in_function>;
+        static constexpr name_func pthread_functions[] = {
+          { "pthread_create", BUILT_IN_TSAN_THREAD_CREATE },
+          { "pthread_join", BUILT_IN_TSAN_THREAD_JOIN },
+          { "pthread_mutex_lock", BUILT_IN_TSAN_THREAD_LOCK },
+          { "pthread_mutex_unlock", BUILT_IN_TSAN_THREAD_UNLOCK }
+        };
+        auto it = std::find_if(std::cbegin(pthread_functions), std::cend(pthread_functions), [name](const name_func& func) {
+          return strcmp(func.first, name) == 0;
+        });
+        if (it != std::end(pthread_functions)) {
+          const auto thread_create_decl = builtin_decl_implicit (it->second);
+          const auto g = gimple_build_call(thread_create_decl, 1, gimple_call_arg(stmt, 0));
+          gimple_set_location(g, gimple_location (stmt));
+          
+          gimple_seq seq = NULL;
+          gimple_seq_add_stmt_without_update(&seq, g);
+          /* If the call can throw, it must be the last stmt in
+        a basic block, so the instrumented stmts need to be
+        inserted in successor bbs.  */
+          if (is_ctrl_altering_stmt(stmt))
+          {
+            edge e;
+
+            const auto bb = gsi_bb(*gsi);
+            e = find_fallthru_edge(bb->succs);
+            if (e)
+              gsi_insert_seq_on_edge_immediate(e, seq);
+          }
+          else
+            gsi_insert_seq_after(gsi, seq, GSI_NEW_STMT);
+        }
+      }
+
       return true;
     }
+  }
   else if (is_gimple_assign (stmt)
 	   && !gimple_clobber_p (stmt))
     {
@@ -749,7 +821,8 @@ static void
 replace_func_exit (gimple *stmt)
 {
   tree builtin_decl = builtin_decl_implicit (BUILT_IN_TSAN_FUNC_EXIT);
-  gimple *g = gimple_build_call (builtin_decl, 0);
+  const auto func_name = IDENTIFIER_POINTER (DECL_NAME (cfun->decl));
+  gimple *g = gimple_build_call (builtin_decl, 1, build_string_literal_from(func_name));
   gimple_set_location (g, cfun->function_end_locus);
   gimple_stmt_iterator gsi = gsi_for_stmt (stmt);
   gsi_replace (&gsi, g, true);
@@ -778,7 +851,8 @@ instrument_func_exit (void)
 		  || gimple_call_builtin_p (stmt, BUILT_IN_RETURN));
       loc = gimple_location (stmt);
       builtin_decl = builtin_decl_implicit (BUILT_IN_TSAN_FUNC_EXIT);
-      g = gimple_build_call (builtin_decl, 0);
+      const auto func_name = IDENTIFIER_POINTER (DECL_NAME (cfun->decl));
+      g = gimple_build_call (builtin_decl, 1, build_string_literal_from(func_name));
       gimple_set_location (g, loc);
       gsi_insert_before (&gsi, g, GSI_SAME_STMT);
     }
@@ -837,19 +911,13 @@ instrument_memory_accesses (bool *cfg_changed)
 static void
 instrument_func_entry (void)
 {
-  tree ret_addr, builtin_decl;
+  tree builtin_decl;
   gimple *g;
   gimple_seq seq = NULL;
 
-  builtin_decl = builtin_decl_implicit (BUILT_IN_RETURN_ADDRESS);
-  g = gimple_build_call (builtin_decl, 1, integer_zero_node);
-  ret_addr = make_ssa_name (ptr_type_node);
-  gimple_call_set_lhs (g, ret_addr);
-  gimple_set_location (g, cfun->function_start_locus);
-  gimple_seq_add_stmt_without_update (&seq, g);
-
   builtin_decl = builtin_decl_implicit (BUILT_IN_TSAN_FUNC_ENTRY);
-  g = gimple_build_call (builtin_decl, 1, ret_addr);
+  const auto func_name = IDENTIFIER_POINTER (DECL_NAME (cfun->decl));
+  g = gimple_build_call (builtin_decl, 1, build_string_literal_from(func_name));
   gimple_set_location (g, cfun->function_start_locus);
   gimple_seq_add_stmt_without_update (&seq, g);
 

@@ -3394,6 +3394,12 @@ initialize_sanitizer_builtins (void)
     = build_function_type_list (void_type_node, ptr_type_node,
 				unsigned_char_type_node,
 				pointer_sized_int_node, NULL_TREE);
+  tree BT_FN_VOID_PTR_PTR_INT_PTR_PTR
+    = build_function_type_list (void_type_node, ptr_type_node,
+        ptr_type_node, integer_type_node, ptr_type_node, ptr_type_node );
+  tree BT_FN_VOID_PTR_INT_PTR_PTR
+    = build_function_type_list (void_type_node, ptr_type_node,
+        integer_type_node, ptr_type_node, ptr_type_node );
 
   tree BT_FN_BOOL_VPTR_PTR_IX_INT_INT[5];
   tree BT_FN_IX_CONST_VPTR_INT[5];
