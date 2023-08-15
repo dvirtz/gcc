@@ -369,7 +369,7 @@ _EOF
 ])
 
 if test "x$TSAN_SUPPORTED" = "xyes"; then
-  AC_CONFIG_FILES(AC_FOREACH([DIR], [tsan], [DIR/Makefile ]), 
+  AC_CONFIG_FILES(AC_FOREACH([DIR], [etsan], [DIR/Makefile ]), 
     [cat > vpsed$$ << \_EOF
 s!`test -f '$<' || echo '$(srcdir)/'`!!
 _EOF

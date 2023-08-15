@@ -143,9 +143,8 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
   LD_DYNAMIC_OPTION "}}%{!static-libhwasan:-lhwasan}"
 #undef LIBTSAN_EARLY_SPEC
 #define LIBTSAN_EARLY_SPEC "%{!shared:libtsan_preinit%O%s} " \
-  "%{static-libtsan:%{!shared:" \
-  LD_STATIC_OPTION " --whole-archive -ltsan --no-whole-archive " \
-  LD_DYNAMIC_OPTION "}}%{!static-libtsan:-ltsan}"
+  LD_STATIC_OPTION " --whole-archive -ltsan --no-whole-archive -lstdc++ " \
+  LD_DYNAMIC_OPTION
 #undef LIBLSAN_EARLY_SPEC
 #define LIBLSAN_EARLY_SPEC "%{!shared:liblsan_preinit%O%s} " \
   "%{static-liblsan:%{!shared:" \

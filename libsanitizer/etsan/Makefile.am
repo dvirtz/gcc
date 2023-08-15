@@ -1,38 +1,26 @@
-ACLOCAL_AMFLAGS = -I .. -I ../config
+AM_CPPFLAGS = -I $(top_srcdir) -I $(top_srcdir)/include
 
-sanincludedir = $(libdir)/gcc/$(target_alias)/$(gcc_version)/include/sanitizer
-
-nodist_saninclude_HEADERS =
-
-if SANITIZER_SUPPORTED
-SUBDIRS = sanitizer_common
-nodist_saninclude_HEADERS += \
-  include/sanitizer/common_interface_defs.h
-if !USING_MAC_INTERPOSE
-SUBDIRS += interception
-endif
-if LIBBACKTRACE_SUPPORTED
-SUBDIRS += libbacktrace
-endif
-SUBDIRS += lsan asan ubsan
-nodist_saninclude_HEADERS += \
-  include/sanitizer/lsan_interface.h \
-  include/sanitizer/asan_interface.h \
-  include/sanitizer/tsan_interface.h \
-  include/sanitizer/hwasan_interface.h
-if TSAN_SUPPORTED
-SUBDIRS += etsan
-endif
-if HWASAN_SUPPORTED
-SUBDIRS += hwasan
-endif
-endif
-
-## Force DIST_SUBDIRS so that make distclean works
-DIST_SUBDIRS = $(SUBDIRS)
-
-## May be used by toolexeclibdir.
+# May be used by toolexeclibdir.
 gcc_version := $(shell @get_gcc_base_ver@ $(top_srcdir)/../gcc/BASE-VER)
+
+DEFS = -D_GNU_SOURCE -D_DEBUG -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DCAN_SANITIZE_UB=0
+AM_CXXFLAGS = -Wall -W -Wno-unused-parameter -Wwrite-strings -pedantic -Wno-long-long  -fPIC -fno-builtin -fno-exceptions -fno-rtti -fomit-frame-pointer -funwind-tables -fvisibility=hidden -Wno-variadic-macros
+AM_CXXFLAGS += $(LIBSTDCXX_RAW_CXX_CXXFLAGS)
+AM_CXXFLAGS += -std=gnu++14
+AM_CXXFLAGS += $(EXTRA_CXXFLAGS)
+AM_CCASFLAGS = $(EXTRA_ASFLAGS)
+ACLOCAL_AMFLAGS = -I m4
+
+toolexeclib_LIBRARIES = libtsan.a
+nodist_toolexeclib_HEADERS = libtsan_preinit.o
+
+tsan_files = \
+	tsan_interface.cpp
+
+libtsan_a_SOURCES = $(tsan_files)
+
+libtsan_preinit.o: tsan_preinit.o
+	cp $< $@
 
 # Work around what appears to be a GNU make bug handling MAKEFLAGS
 # values defined in terms of make variables, as is the case for CC and
@@ -74,8 +62,5 @@ AM_MAKEFLAGS = \
 
 MAKEOVERRIDES=
 
-nodist_toolexeclib_HEADERS = libsanitizer.spec
-
 ## ################################################################
 
-include $(top_srcdir)/../multilib.am

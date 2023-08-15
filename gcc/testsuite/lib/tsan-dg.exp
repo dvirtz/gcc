@@ -60,11 +60,11 @@ proc tsan_link_flags { paths } {
     set tsan_saved_library_path $ld_library_path
 
     if { $gccpath != "" } {
-      if { [file exists "${gccpath}/libsanitizer/tsan/.libs/libtsan.a"]
-	   || [file exists "${gccpath}/libsanitizer/tsan/.libs/libtsan.${shlib_ext}"] } {
-	  append flags " -B${gccpath}/libsanitizer/tsan/ "
-	  append flags " -L${gccpath}/libsanitizer/tsan/.libs "
-	  append ld_library_path ":${gccpath}/libsanitizer/tsan/.libs"
+      if { [file exists "${gccpath}/libsanitizer/etsan/.libs/libtsan.a"]
+	   || [file exists "${gccpath}/libsanitizer/etsan/.libs/libtsan.${shlib_ext}"] } {
+	  append flags " -B${gccpath}/libsanitizer/etsan/ "
+	  append flags " -L${gccpath}/libsanitizer/etsan/.libs "
+	  append ld_library_path ":${gccpath}/libsanitizer/etsan/.libs"
       }
     } else {
       global tool_root_dir
