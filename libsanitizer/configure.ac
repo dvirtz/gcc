@@ -138,6 +138,10 @@ AC_SUBST(link_libubsan)
 link_liblsan=$link_sanitizer_common
 AC_SUBST(link_liblsan)
 
+# Set up the set of additional libraries that we need to link against for libubsan.
+link_libscudo=$link_sanitizer_common
+AC_SUBST(link_libscudo)
+
 
 # At least for glibc, clock_gettime is in librt.  But don't pull that
 # in if it still doesn't give us the function we want.  This
@@ -355,7 +359,7 @@ AH_BOTTOM([#include "libbacktrace/backtrace-rename.h"])
 AC_CONFIG_FILES([Makefile libsanitizer.spec libbacktrace/backtrace-supported.h])
 AC_CONFIG_HEADER(config.h)
 
-AC_CONFIG_FILES(AC_FOREACH([DIR], [interception sanitizer_common libbacktrace lsan asan ubsan], [DIR/Makefile ]),
+AC_CONFIG_FILES(AC_FOREACH([DIR], [interception sanitizer_common libbacktrace lsan asan ubsan scudo gwp_asan], [DIR/Makefile ]),
   [cat > vpsed$$ << \_EOF
 s!`test -f '$<' || echo '$(srcdir)/'`!!
 _EOF

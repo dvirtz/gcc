@@ -333,6 +333,7 @@ libexecdir = @libexecdir@
 link_libasan = @link_libasan@
 link_libhwasan = @link_libhwasan@
 link_liblsan = @link_liblsan@
+link_libscudo = @link_libscudo@
 link_libtsan = @link_libtsan@
 link_libubsan = @link_libubsan@
 localedir = @localedir@
@@ -366,7 +367,8 @@ sanincludedir = $(libdir)/gcc/$(target_alias)/$(gcc_version)/include/sanitizer
 nodist_saninclude_HEADERS = $(am__append_1)
 @SANITIZER_SUPPORTED_TRUE@SUBDIRS = sanitizer_common $(am__append_2) \
 @SANITIZER_SUPPORTED_TRUE@	$(am__append_3) lsan asan ubsan \
-@SANITIZER_SUPPORTED_TRUE@	$(am__append_4) $(am__append_5)
+@SANITIZER_SUPPORTED_TRUE@	gwp_asan scudo $(am__append_4) \
+@SANITIZER_SUPPORTED_TRUE@	$(am__append_5)
 DIST_SUBDIRS = $(SUBDIRS)
 gcc_version := $(shell @get_gcc_base_ver@ $(top_srcdir)/../gcc/BASE-VER)
 
